@@ -29,18 +29,4 @@ The system consists of 6 core components:
 -  **Economic limits:** Per-address proposal limits and execution caps
 -  **Linear lifecycle:** Multi-stage proposal flow with commit phase
 
-## Project Structure
 
-```
-src/
-├── core/                    # Core protocol modules
-│   ├── AccessControl.sol        # RBAC implementation
-│   ├── AuthorizationModule.sol  # Sig verification
-│   ├── ProposalManager.sol      # State machine
-│   └── TimelockQueue.sol        # Execution engine
-├── interfaces/              # Contract interfaces
-├── libraries/               # Utility libraries
-└── modules/                 # Supporting modules
-    ├── GovernanceProtection.sol # Economic guards
-    └── RewardDistributor.sol    # Scalable claims
-```
