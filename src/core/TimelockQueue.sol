@@ -3,8 +3,9 @@ pragma solidity ^0.8.13;
 
 import {ITimelockQueue} from "../interfaces/ITimelockQueue.sol";
 import {IProposalManager} from "../interfaces/IProposerManager.sol";
+import {AccessControl} from "./AccessControl.sol";
 
-contract TimelockQueue is ITimelockQueue {
+contract TimelockQueue is ITimelockQueue, AccessControl {
     
     // Queue storage
     mapping(bytes32 => QueuedTransaction) private _queue;
@@ -18,20 +19,8 @@ contract TimelockQueue is ITimelockQueue {
     // Global minimum delay (can be overridden per transaction)
     uint256 private _minDelay;
     
-    // Owner
-    address private _owner;
-    
     // Reentrancy guard
     uint256 private _locked = 1;
-
-    modifier onlyOwner() {
-        _onlyOwner();
-        _;
-    }
-
-    function _onlyOwner() internal view {
-        require(msg.sender == _owner, "Only owner");
-    }
 
     modifier nonReentrant() {
         _nonReentrantBefore();
@@ -52,9 +41,11 @@ contract TimelockQueue is ITimelockQueue {
         require(proposalManager != address(0), "Invalid proposal manager");
         require(minDelay > 0, "Invalid min delay");
         
-        _owner = msg.sender;
         _proposalManager = IProposalManager(proposalManager);
         _minDelay = minDelay;
+        
+        // Grant EXECUTOR_ROLE to the deployer by default
+        _grantRole(EXECUTOR_ROLE, msg.sender);
     }
 
     function queueTransaction(
@@ -102,7 +93,7 @@ contract TimelockQueue is ITimelockQueue {
         address target,
         uint256 value,
         bytes calldata data
-    ) external nonReentrant {
+    ) external nonReentrant hasRole(EXECUTOR_ROLE) {
         QueuedTransaction storage txn = _queue[proposalId];
         
         // Verify transaction exists
@@ -143,7 +134,7 @@ contract TimelockQueue is ITimelockQueue {
         emit TransactionThatWasExecuted(proposalId);
     }
 
-    function cancelTransaction(bytes32 proposalId) external onlyOwner {
+    function cancelTransaction(bytes32 proposalId) external hasRole(ADMIN_ROLE) {
         QueuedTransaction storage txn = _queue[proposalId];
         require(txn.queuedAt != 0, "Transaction not queued");
         require(!txn.executed, "Already executed");
@@ -197,7 +188,7 @@ contract TimelockQueue is ITimelockQueue {
     }
 
     // Admin: Update global min delay
-    function setMinDelay(uint256 newDelay) external onlyOwner {
+    function setMinDelay(uint256 newDelay) external hasRole(ADMIN_ROLE) {
         require(newDelay > 0, "Invalid delay");
         _minDelay = newDelay;
     }

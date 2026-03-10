@@ -3,8 +3,9 @@ pragma solidity ^0.8.13;
 
 import {IRewardDistributor} from "../interfaces/IRewardDistributor.sol";
 import {IERC20} from "../interfaces/IERC20.sol";
+import {AccessControl} from "../core/AccessControl.sol";
 
-contract RewardDistributor is IRewardDistributor {
+contract RewardDistributor is IRewardDistributor, AccessControl {
     
     // Merkle root for valid claims
     bytes32 private _merkleRoot;
@@ -28,28 +29,18 @@ contract RewardDistributor is IRewardDistributor {
     
     // Claim amounts registry (address => amount eligible to claim)
     mapping(address => uint256) private _claimAmounts;
-    
-    // Owner/governance
-    address private _owner;
-
-    modifier onlyOwner() {
-        _onlyOwner();
-        _;
-    }
-
-    function _onlyOwner() internal view {
-        require(msg.sender == _owner, "Only owner");
-    }
 
     constructor(bytes32 initialRoot, uint256 totalAllocated, address rewardToken) {
         require(initialRoot != bytes32(0), "Invalid merkle root");
         require(totalAllocated > 0, "Invalid allocation");
         require(rewardToken != address(0), "Invalid token");
         
-        _owner = msg.sender;
         _merkleRoot = initialRoot;
         _totalAllocated = totalAllocated;
         _rewardToken = IERC20(rewardToken);
+        
+        // Grant GOVERNANCE_ROLE to deployer by default
+        _grantRole(GOVERNANCE_ROLE, msg.sender);
     }
 
     function claim(
@@ -64,7 +55,7 @@ contract RewardDistributor is IRewardDistributor {
         return _claimed[recipient];
     }
 
-    function updateMerkleRoot(bytes32 newRoot) external onlyOwner {
+    function updateMerkleRoot(bytes32 newRoot) external hasRole(GOVERNANCE_ROLE) {
         require(newRoot != bytes32(0), "Invalid merkle root");
         
         bytes32 oldRoot = _merkleRoot;
@@ -200,7 +191,7 @@ contract RewardDistributor is IRewardDistributor {
         emit ClaimProcessed(recipient, amount);
     }
 
-    function withdrawUnclaimed(address recipient, uint256 amount) external onlyOwner {
+    function withdrawUnclaimed(address recipient, uint256 amount) external hasRole(ADMIN_ROLE) {
         require(recipient != address(0), "Invalid recipient");
         require(amount > 0, "Invalid amount");
         

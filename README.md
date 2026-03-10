@@ -8,22 +8,39 @@ ARES Protocol implements a multi-layered treasury system that prevents common De
 
 ## Architecture
 
-The system consists of 5 independent modules:
+The system consists of 6 core components:
 
-1. **AuthorizationModule** - EIP-712 signature verification with replay protection
-2. **GovernanceProtection** - Economic attack mitigation (limits, caps, snapshots)
-3. **ProposalManager** - Proposal lifecycle orchestration
-4. **TimelockQueue** - Time-delayed execution with reentrancy protection
-5. **RewardDistributor** - Merkle-based token distribution
+1. **AccessControl** - Custom, granular Role-Based Access Control (RBAC)
+2. **AuthorizationModule** - EIP-712 signature verification with replay protection
+3. **GovernanceProtection** - Economic attack mitigation (limits, caps, snapshots)
+4. **ProposalManager** - Proposal lifecycle orchestration
+5. **TimelockQueue** - Time-delayed execution with reentrancy protection
+6. **RewardDistributor** - Merkle-based token distribution
 
 ## Key Features
 
--  EIP-712 structured signatures with domain separation
--  Nonce-based replay protection (same-chain and cross-chain)
--  Mandatory time delays on all treasury operations
--  Reentrancy guards on execution paths
--  Merkle proof-based reward distribution (O(log n) gas)
--  Flash loan defense via block-based voting snapshots
--  Proposal limits and execution caps
--  Multi-stage proposal lifecycle with commit phase
+-  **Custom RBAC:** Granular permissions (Admin, Proposer, Executor, Governance)
+-  **EIP-712 signatures:** Structured data hashing with domain separation
+-  **Nonce protection:** Replay protection (same-chain and cross-chain)
+-  **Timelock execution:** Mandatory delays on all treasury operations
+-  **Reentrancy guards:** Dual-layer protection (Mutex + CEI pattern)
+-  **Merkle rewards:** Scalable token distribution (O(log n) gas)
+-  **Flash loan defense:** Block-based historical voting snapshots
+-  **Economic limits:** Per-address proposal limits and execution caps
+-  **Linear lifecycle:** Multi-stage proposal flow with commit phase
 
+## Project Structure
+
+```
+src/
+├── core/                    # Core protocol modules
+│   ├── AccessControl.sol        # RBAC implementation
+│   ├── AuthorizationModule.sol  # Sig verification
+│   ├── ProposalManager.sol      # State machine
+│   └── TimelockQueue.sol        # Execution engine
+├── interfaces/              # Contract interfaces
+├── libraries/               # Utility libraries
+└── modules/                 # Supporting modules
+    ├── GovernanceProtection.sol # Economic guards
+    └── RewardDistributor.sol    # Scalable claims
+```

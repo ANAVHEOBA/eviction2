@@ -2,8 +2,9 @@
 pragma solidity ^0.8.13;
 
 import {IGovernanceProtection} from "../interfaces/IGovernanceProtection.sol";
+import {AccessControl} from "../core/AccessControl.sol";
 
-contract GovernanceProtection is IGovernanceProtection {
+contract GovernanceProtection is IGovernanceProtection, AccessControl {
     
     // Maximum amount a single proposer can propose
     mapping(address => uint256) private _proposalLimits;
@@ -14,21 +15,8 @@ contract GovernanceProtection is IGovernanceProtection {
     // Voting power snapshots (block-based, prevents flash loans)
     mapping(address => mapping(uint256 => uint256)) private _votingPowerSnapshots;
     mapping(address => uint256) private _snapshotBlocks;
-    
-    // Owner for admin functions
-    address private _owner;
-
-    modifier onlyOwner() {
-        _onlyOwner();
-        _;
-    }
-
-    function _onlyOwner() internal view {
-        require(msg.sender == _owner, "Only owner");
-    }
 
     constructor(uint256 executionCap) {
-        _owner = msg.sender;
         _executionCap = executionCap;
     }
 
@@ -102,14 +90,14 @@ contract GovernanceProtection is IGovernanceProtection {
     // Admin functions
     function setProposalLimit(address proposer, uint256 limit) 
         external 
-        onlyOwner 
+        hasRole(ADMIN_ROLE) 
     {
         _proposalLimits[proposer] = limit;
     }
 
     function setExecutionCap(uint256 cap) 
         external 
-        onlyOwner 
+        hasRole(ADMIN_ROLE) 
     {
         _executionCap = cap;
     }

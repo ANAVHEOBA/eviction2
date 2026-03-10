@@ -46,6 +46,10 @@ contract GovernanceSystemTest is Test {
         proposalManager = new ProposalManager(address(authModule), address(govProtection));
         timelockQueue = new TimelockQueue(address(proposalManager), MIN_DELAY);
         
+        // Grant roles for testing
+        proposalManager.grantRole(proposalManager.PROPOSER_ROLE(), owner);
+        proposalManager.grantRole(proposalManager.PROPOSER_ROLE(), attacker);
+
         // Deploy reward token and distributor
         rewardToken = new MockERC20(1000000 ether);
         bytes32 merkleRoot = keccak256("initial");

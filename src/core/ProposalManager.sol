@@ -4,8 +4,9 @@ pragma solidity ^0.8.13;
 import {IProposalManager} from "../interfaces/IProposerManager.sol";
 import {IAuthorizationModule} from "../interfaces/IAuthorizationModule.sol";
 import {IGovernanceProtection} from "../interfaces/IGovernanceProtection.sol";
+import {AccessControl} from "./AccessControl.sol";
 
-contract ProposalManager is IProposalManager {
+contract ProposalManager is IProposalManager, AccessControl {
     
     // Proposal states
     uint8 private constant STATE_PENDING = 0;
@@ -30,33 +31,24 @@ contract ProposalManager is IProposalManager {
     // References to other modules
     IAuthorizationModule private _authModule;
     IGovernanceProtection private _govProtection;
-    
-    // Owner
-    address private _owner;
-    
-    modifier onlyOwner() {
-        _onlyOwner();
-        _;
-    }
-
-    function _onlyOwner() internal view {
-        require(msg.sender == _owner, "Only owner");
-    }
 
     constructor(address authModule, address govProtection) {
         require(authModule != address(0), "Invalid auth module");
         require(govProtection != address(0), "Invalid gov protection");
         
-        _owner = msg.sender;
         _authModule = IAuthorizationModule(authModule);
         _govProtection = IGovernanceProtection(govProtection);
+        
+        // Deployer gets admin role via AccessControl constructor
+        // We can also grant PROPOSER_ROLE to the deployer by default
+        _grantRole(PROPOSER_ROLE, msg.sender);
     }
 
     function createProposal(
         address target,
         uint256 value,
         bytes calldata data
-    ) external returns (bytes32 proposalId) {
+    ) external hasRole(PROPOSER_ROLE) returns (bytes32 proposalId) {
         require(target != address(0), "Invalid target");
         require(data.length > 0, "Empty proposal data");
         
@@ -135,7 +127,7 @@ contract ProposalManager is IProposalManager {
     function cancelProposal(bytes32 proposalId) external {
         ProposalData storage proposal = _proposals[proposalId];
         require(proposal.createdAt != 0, "Proposal not found");
-        require(msg.sender == proposal.proposer || msg.sender == _owner, "Unauthorized");
+        require(msg.sender == proposal.proposer || hasRoleStatus(ADMIN_ROLE, msg.sender), "Unauthorized");
         
         // Can only cancel if not already queued/executed
         require(proposal.state != STATE_QUEUED, "Cannot cancel queued proposal");
