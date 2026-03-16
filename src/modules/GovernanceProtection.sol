@@ -6,6 +6,11 @@ import {AccessControl} from "../core/AccessControl.sol";
 
 contract GovernanceProtection is IGovernanceProtection, AccessControl {
     
+    // SECURITY FIX: Events for critical state changes
+    event ProposalLimitUpdated(address indexed proposer, uint256 oldLimit, uint256 newLimit);
+    event ExecutionCapUpdated(uint256 oldCap, uint256 newCap);
+    event VotingTokenUpdated(address oldToken, address newToken);
+    
     // Maximum amount a single proposer can propose
     mapping(address => uint256) private _proposalLimits;
     
@@ -15,6 +20,9 @@ contract GovernanceProtection is IGovernanceProtection, AccessControl {
     // Voting power snapshots (block-based, prevents flash loans)
     mapping(address => mapping(uint256 => uint256)) private _votingPowerSnapshots;
     mapping(address => uint256) private _snapshotBlocks;
+    
+    // Voting token interface (for future integration)
+    address private _votingToken;
 
     constructor(uint256 executionCap) {
         _executionCap = executionCap;
@@ -27,8 +35,12 @@ contract GovernanceProtection is IGovernanceProtection, AccessControl {
     {
         uint256 limit = _proposalLimits[proposer];
         if (limit == 0) {
-            // No limit set means unlimited
-            return true;
+            // CRITICAL FIX: Default to execution cap, not unlimited
+            limit = _executionCap;
+            if (limit == 0) {
+                // If no execution cap either, deny by default for safety
+                return false;
+            }
         }
         return value <= limit;
     }
@@ -82,9 +94,12 @@ contract GovernanceProtection is IGovernanceProtection, AccessControl {
         
         // Take voting power snapshot at current block
         _snapshotBlocks[proposer] = block.number;
-        _votingPowerSnapshots[proposer][block.number] = block.number;
         
-        // Future: integrate with actual voting token to capture balance
+        // SECURITY FIX: Store actual voting power, not block number
+        // For now, use a placeholder value. In production, integrate with voting token:
+        // uint256 votingPower = IVotingToken(_votingToken).balanceOfAt(proposer, block.number);
+        uint256 votingPower = 1; // Placeholder - should be actual token balance
+        _votingPowerSnapshots[proposer][block.number] = votingPower;
     }
 
     // Admin functions
@@ -92,13 +107,35 @@ contract GovernanceProtection is IGovernanceProtection, AccessControl {
         external 
         hasRole(ADMIN_ROLE) 
     {
+        uint256 oldLimit = _proposalLimits[proposer];
         _proposalLimits[proposer] = limit;
+        emit ProposalLimitUpdated(proposer, oldLimit, limit);
     }
 
     function setExecutionCap(uint256 cap) 
         external 
         hasRole(ADMIN_ROLE) 
     {
+        uint256 oldCap = _executionCap;
         _executionCap = cap;
+        emit ExecutionCapUpdated(oldCap, cap);
+    }
+    
+    function setVotingToken(address votingToken) 
+        external 
+        hasRole(ADMIN_ROLE) 
+    {
+        require(votingToken != address(0), "Invalid voting token");
+        address oldToken = _votingToken;
+        _votingToken = votingToken;
+        emit VotingTokenUpdated(oldToken, votingToken);
+    }
+    
+    function getVotingPowerAt(address proposer, uint256 blockNumber) 
+        external 
+        view 
+        returns (uint256) 
+    {
+        return _votingPowerSnapshots[proposer][blockNumber];
     }
 }

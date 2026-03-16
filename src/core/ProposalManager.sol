@@ -28,6 +28,12 @@ contract ProposalManager is IProposalManager, AccessControl {
     
     mapping(bytes32 => ProposalData) private _proposals;
     
+    // SECURITY FIX: Rate limiting for proposal spam prevention
+    mapping(address => uint256) private _proposalCount;
+    mapping(address => uint256) private _lastProposalTime;
+    uint256 private _proposalCooldown; // Configurable cooldown period
+    uint256 private constant MAX_PROPOSALS_PER_PROPOSER = 100; // Max active proposals per address
+    
     // References to other modules
     IAuthorizationModule private _authModule;
     IGovernanceProtection private _govProtection;
@@ -35,13 +41,30 @@ contract ProposalManager is IProposalManager, AccessControl {
     constructor(address authModule, address govProtection) {
         require(authModule != address(0), "Invalid auth module");
         require(govProtection != address(0), "Invalid gov protection");
+        // SECURITY FIX: Validate that addresses are contracts, not EOAs
+        require(_isContract(authModule), "Auth module must be a contract");
+        require(_isContract(govProtection), "Gov protection must be a contract");
         
         _authModule = IAuthorizationModule(authModule);
         _govProtection = IGovernanceProtection(govProtection);
         
+        // SECURITY FIX: Set default cooldown (can be changed by admin)
+        _proposalCooldown = 1 minutes; // Default 1 minute cooldown
+        
         // Deployer gets admin role via AccessControl constructor
         // We can also grant PROPOSER_ROLE to the deployer by default
         _grantRole(PROPOSER_ROLE, msg.sender);
+    }
+    
+    /**
+     * @notice Check if an address is a contract
+     */
+    function _isContract(address account) internal view returns (bool) {
+        uint256 size;
+        assembly {
+            size := extcodesize(account)
+        }
+        return size > 0;
     }
 
     function createProposal(
@@ -51,23 +74,40 @@ contract ProposalManager is IProposalManager, AccessControl {
     ) external hasRole(PROPOSER_ROLE) returns (bytes32 proposalId) {
         require(target != address(0), "Invalid target");
         require(data.length > 0, "Empty proposal data");
+        // SECURITY FIX: Prevent massive data griefing attacks
+        require(data.length <= 10000, "Proposal data too large"); // 10KB max
+        
+        // SECURITY FIX: Rate limiting to prevent spam
+        require(block.timestamp >= _lastProposalTime[msg.sender] + _proposalCooldown, "Proposal cooldown active");
+        require(_proposalCount[msg.sender] < MAX_PROPOSALS_PER_PROPOSER, "Too many active proposals");
         
         // Check governance limits
         require(_govProtection.checkProposalLimitsThatCanBeRequested(msg.sender, value), 
             "Proposal limit exceeded");
         
-        // Generate unique proposalId
+        // CRITICAL FIX: Also enforce global execution cap
+        require(_govProtection.enforceExecutionCap(value), "Exceeds execution cap");
+        
+        // Generate unique proposalId with secure entropy
+        // SECURITY FIX: Removed gasleft() to prevent gas manipulation attacks
+        // Note: block.difficulty is aliased to PREVRANDAO in post-merge Ethereum
         proposalId = keccak256(abi.encodePacked(
             msg.sender,
             target,
             value,
             data,
             block.timestamp,
-            block.number
+            block.number,
+            block.difficulty, // Aliased to PREVRANDAO post-merge
+            _proposalCount[msg.sender] // Use proposal count as additional entropy
         ));
         
         // Ensure unique proposal
         require(_proposals[proposalId].createdAt == 0, "Proposal already exists");
+        
+        // SECURITY FIX: Update rate limiting state
+        _proposalCount[msg.sender]++;
+        _lastProposalTime[msg.sender] = block.timestamp;
         
         // Store proposal
         _proposals[proposalId] = ProposalData({
@@ -88,6 +128,8 @@ contract ProposalManager is IProposalManager, AccessControl {
         ProposalData storage proposal = _proposals[proposalId];
         require(proposal.createdAt != 0, "Proposal not found");
         require(proposal.state == STATE_PENDING, "Invalid proposal state");
+        // SECURITY FIX: Only proposer or admin can commit
+        require(msg.sender == proposal.proposer || hasRoleStatus(ADMIN_ROLE, msg.sender), "Unauthorized");
         
         // Move to committed state
         proposal.state = STATE_COMMITTED;
@@ -98,6 +140,8 @@ contract ProposalManager is IProposalManager, AccessControl {
         ProposalData storage proposal = _proposals[proposalId];
         require(proposal.createdAt != 0, "Proposal not found");
         require(proposal.state == STATE_COMMITTED, "Proposal not committed");
+        // SECURITY FIX: Only proposer or admin can mark for approval
+        require(msg.sender == proposal.proposer || hasRoleStatus(ADMIN_ROLE, msg.sender), "Unauthorized");
         
         // Move to approval required state
         proposal.state = STATE_APPROVAL_REQUIRED;
@@ -119,6 +163,11 @@ contract ProposalManager is IProposalManager, AccessControl {
         // Mark as approved in storage
         proposal.approved = true;
         
+        // SECURITY FIX: Decrement proposal count when queued (no longer "active" in manager)
+        if (_proposalCount[proposal.proposer] > 0) {
+            _proposalCount[proposal.proposer]--;
+        }
+        
         // Move to queued state
         proposal.state = STATE_QUEUED;
         emit ProposalQueued(proposalId);
@@ -132,6 +181,11 @@ contract ProposalManager is IProposalManager, AccessControl {
         // Can only cancel if not already queued/executed
         require(proposal.state != STATE_QUEUED, "Cannot cancel queued proposal");
         require(proposal.state != STATE_CANCELLED, "Already cancelled");
+        
+        // SECURITY FIX: Decrement proposal count when cancelled
+        if (_proposalCount[proposal.proposer] > 0) {
+            _proposalCount[proposal.proposer]--;
+        }
         
         proposal.state = STATE_CANCELLED;
         emit ProposalCancelled(proposalId);
@@ -160,5 +214,32 @@ contract ProposalManager is IProposalManager, AccessControl {
             proposal.createdAt,
             proposal.state
         );
+    }
+    
+    // ============ ADMIN FUNCTIONS ============
+    
+    /**
+     * @notice Set proposal cooldown period (for spam prevention)
+     * @param cooldown Time in seconds between proposals (0 to disable)
+     */
+    function setProposalCooldown(uint256 cooldown) external hasRole(ADMIN_ROLE) {
+        require(cooldown <= 1 hours, "Cooldown too long");
+        uint256 oldCooldown = _proposalCooldown;
+        _proposalCooldown = cooldown;
+        emit ProposalCooldownUpdated(oldCooldown, cooldown);
+    }
+    
+    /**
+     * @notice Get current proposal cooldown
+     */
+    function getProposalCooldown() external view returns (uint256) {
+        return _proposalCooldown;
+    }
+    
+    /**
+     * @notice Get proposal count for an address
+     */
+    function getProposalCount(address proposer) external view returns (uint256) {
+        return _proposalCount[proposer];
     }
 }

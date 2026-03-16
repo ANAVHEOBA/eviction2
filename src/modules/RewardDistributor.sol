@@ -34,6 +34,8 @@ contract RewardDistributor is IRewardDistributor, AccessControl {
         require(initialRoot != bytes32(0), "Invalid merkle root");
         require(totalAllocated > 0, "Invalid allocation");
         require(rewardToken != address(0), "Invalid token");
+        // SECURITY FIX: Validate that reward token is a contract
+        require(_isContract(rewardToken), "Reward token must be a contract");
         
         _merkleRoot = initialRoot;
         _totalAllocated = totalAllocated;
@@ -41,6 +43,17 @@ contract RewardDistributor is IRewardDistributor, AccessControl {
         
         // Grant GOVERNANCE_ROLE to deployer by default
         _grantRole(GOVERNANCE_ROLE, msg.sender);
+    }
+    
+    /**
+     * @notice Check if an address is a contract
+     */
+    function _isContract(address account) internal view returns (bool) {
+        uint256 size;
+        assembly {
+            size := extcodesize(account)
+        }
+        return size > 0;
     }
 
     function claim(
@@ -198,8 +211,11 @@ contract RewardDistributor is IRewardDistributor, AccessControl {
         uint256 unclaimedAmount = _totalAllocated - _totalClaimed;
         require(amount <= unclaimedAmount, "Insufficient unclaimed tokens");
         
+        // SECURITY FIX: Update state before transfer (CEI pattern)
         _totalAllocated -= amount;
-        require(_rewardToken.transfer(recipient, amount), "Withdrawal failed");
+        
+        bool success = _rewardToken.transfer(recipient, amount);
+        require(success, "Withdrawal failed");
     }
 
     // Internal: Verify merkle proof

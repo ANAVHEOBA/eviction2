@@ -11,13 +11,13 @@ library BytesLib {
     function slice(
         bytes memory data,
         uint256 start,
-        uint256 length
+        uint256 len
     ) internal pure returns (bytes memory) {
-        require(start + length <= data.length, "Slice out of bounds");
+        require(start + len <= data.length, "Slice out of bounds");
         
-        bytes memory result = new bytes(length);
+        bytes memory result = new bytes(len);
         
-        for (uint256 i = 0; i < length; i++) {
+        for (uint256 i = 0; i < len; i++) {
             result[i] = data[start + i];
         }
         
@@ -29,7 +29,7 @@ library BytesLib {
         
         bytes32 result;
         assembly {
-            result := mload(add(data, 0x20))
+            result := mload(add(data, 32))
         }
         return result;
     }

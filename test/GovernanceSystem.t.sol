@@ -49,6 +49,9 @@ contract GovernanceSystemTest is Test {
         // Grant roles for testing
         proposalManager.grantRole(proposalManager.PROPOSER_ROLE(), owner);
         proposalManager.grantRole(proposalManager.PROPOSER_ROLE(), attacker);
+        
+        // Disable cooldown for testing
+        proposalManager.setProposalCooldown(0);
 
         // Deploy reward token and distributor
         rewardToken = new MockERC20(1000000 ether);

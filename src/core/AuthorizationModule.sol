@@ -2,8 +2,9 @@
 pragma solidity ^0.8.13;
 
 import {IAuthorizationModule} from "../interfaces/IAuthorizationModule.sol";
+import {AccessControl} from "./AccessControl.sol";
 
-contract AuthorizationModule is IAuthorizationModule {
+contract AuthorizationModule is IAuthorizationModule, AccessControl {
     
     // EIP-712 domain separator
     bytes32 private _domainSeparator;
@@ -31,6 +32,7 @@ contract AuthorizationModule is IAuthorizationModule {
     constructor() {
         _CHAIN_ID = block.chainid;
         _domainSeparator = _computeDomainSeparator();
+        _requiredSignatures = 1; // Default to 1, should be set higher for production
     }
 
     function _computeDomainSeparator() internal view returns (bytes32) {
@@ -60,10 +62,10 @@ contract AuthorizationModule is IAuthorizationModule {
         TreasuryAction calldata action,
         address signer,
         bytes calldata signature
-    ) external view returns (bool) {
+    ) public view returns (bool) {
         require(signer != address(0), "Invalid signer");
         require(signature.length == 65, "Invalid signature length");
-        require(!_usedNonces[signer][action.nonce], "Nonce already used");
+        // Note: Nonce check moved to approveProposal to allow view function
         
         // Reconstruct the message hash (EIP-712)
         bytes32 dataHash = keccak256(action.data);
@@ -110,11 +112,24 @@ contract AuthorizationModule is IAuthorizationModule {
         }
         require(v == 27 || v == 28, "Invalid signature v");
         
+        // SECURITY FIX: Prevent signature malleability (EIP-2)
+        // Reject signatures with s > secp256k1 curve order / 2
+        uint256 sValue = uint256(s);
+        require(
+            sValue <= 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0,
+            "Invalid signature s value"
+        );
+        
         // Recover signer and compare
         address recoveredSigner = ecrecover(digest, v, r, s);
+        // SECURITY FIX: Check for ecrecover failure (returns address(0))
+        require(recoveredSigner != address(0), "Invalid signature");
         return recoveredSigner == signer;
     }
 
+    // Minimum required signatures for multisig
+    uint256 private _requiredSignatures;
+    
     function approveProposal(
         TreasuryAction calldata action,
         address[] calldata signers,
@@ -122,10 +137,18 @@ contract AuthorizationModule is IAuthorizationModule {
     ) external {
         require(signers.length == signatures.length, "Signers and signatures length mismatch");
         require(signers.length > 0, "At least one signature required");
+        // SECURITY FIX: Enforce minimum signature threshold
+        require(signers.length >= _requiredSignatures, "Insufficient signatures");
         
         // Verify all signatures
         for (uint256 i = 0; i < signers.length; i++) {
+            // SECURITY FIX: Check nonce before verification
+            require(!_usedNonces[signers[i]][action.nonce], "Nonce already used");
             require(this.verifySignature(action, signers[i], signatures[i]), "Invalid signature");
+            // SECURITY FIX: Prevent duplicate signers in same approval
+            for (uint256 j = 0; j < i; j++) {
+                require(signers[i] != signers[j], "Duplicate signer");
+            }
             // Mark nonce as used
             _usedNonces[signers[i]][action.nonce] = true;
             _nonces[signers[i]]++;
@@ -144,15 +167,25 @@ contract AuthorizationModule is IAuthorizationModule {
         return _nonces[signer];
     }
 
-    function markNonceUsed(address signer, uint256 nonce) external {
+    function markNonceUsed(address signer, uint256 nonce) external hasRole(ADMIN_ROLE) {
         require(!_usedNonces[signer][nonce], "Nonce already marked");
         _usedNonces[signer][nonce] = true;
         emit NonceUsed(signer, nonce);
     }
 
-    function revokeApproval(bytes32 proposalId) external {
+    function revokeApproval(bytes32 proposalId) external hasRole(ADMIN_ROLE) {
         require(_approvals[proposalId], "Proposal not approved");
         _approvals[proposalId] = false;
         emit ApprovalRevoked(proposalId);
+    }
+    
+    function setRequiredSignatures(uint256 required) external hasRole(ADMIN_ROLE) {
+        require(required > 0, "Must require at least 1 signature");
+        require(required <= 10, "Too many required signatures");
+        _requiredSignatures = required;
+    }
+    
+    function getRequiredSignatures() external view returns (uint256) {
+        return _requiredSignatures;
     }
 }

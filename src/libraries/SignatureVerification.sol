@@ -91,9 +91,9 @@ library SignatureVerification {
         uint8 v;
         
         assembly {
-            r := calldataload(add(signature.offset, 0x20))
-            s := calldataload(add(signature.offset, 0x40))
-            v := byte(0, calldataload(add(signature.offset, 0x60)))
+            r := calldataload(signature.offset)
+            s := calldataload(add(signature.offset, 0x20))
+            v := byte(0, calldataload(add(signature.offset, 0x40)))
         }
         
         // Handle v value (can be 0/1 or 27/28)

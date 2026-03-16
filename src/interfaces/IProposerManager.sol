@@ -14,7 +14,9 @@ interface IProposalManager {
     // an event for proposal that was cancelled
     event ProposalCancelled(bytes32 indexed proposalId);
     // Event for when proposal execution fails
-    event ProposalExecutionFailed(bytes32 indexed proposalId, string reason); 
+    event ProposalExecutionFailed(bytes32 indexed proposalId, string reason);
+    // SECURITY FIX: Event for cooldown changes
+    event ProposalCooldownUpdated(uint256 oldCooldown, uint256 newCooldown); 
     
     // the first function to create a proposol
     // the input are target(the address) the value of the proposl(uint) and the description(bytes) that convertes to bytes

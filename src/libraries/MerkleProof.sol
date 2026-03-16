@@ -6,7 +6,7 @@ library MerkleProof {
     
 
     function verify(
-        bytes32[] calldata proof,
+        bytes32[] memory proof,
         bytes32 root,
         bytes32 leaf
     ) internal pure returns (bool) {
@@ -14,7 +14,7 @@ library MerkleProof {
     }
 
     function processProof(
-        bytes32[] calldata proof,
+        bytes32[] memory proof,
         bytes32 leaf
     ) internal pure returns (bytes32) {
         bytes32 computedHash = leaf;
