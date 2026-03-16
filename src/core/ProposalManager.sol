@@ -56,9 +56,7 @@ contract ProposalManager is IProposalManager, AccessControl {
         _grantRole(PROPOSER_ROLE, msg.sender);
     }
     
-    /**
-     * @notice Check if an address is a contract
-     */
+  
     function _isContract(address account) internal view returns (bool) {
         uint256 size;
         assembly {
@@ -216,12 +214,7 @@ contract ProposalManager is IProposalManager, AccessControl {
         );
     }
     
-    // ============ ADMIN FUNCTIONS ============
-    
-    /**
-     * @notice Set proposal cooldown period (for spam prevention)
-     * @param cooldown Time in seconds between proposals (0 to disable)
-     */
+  
     function setProposalCooldown(uint256 cooldown) external hasRole(ADMIN_ROLE) {
         require(cooldown <= 1 hours, "Cooldown too long");
         uint256 oldCooldown = _proposalCooldown;
@@ -229,16 +222,12 @@ contract ProposalManager is IProposalManager, AccessControl {
         emit ProposalCooldownUpdated(oldCooldown, cooldown);
     }
     
-    /**
-     * @notice Get current proposal cooldown
-     */
+
     function getProposalCooldown() external view returns (uint256) {
         return _proposalCooldown;
     }
     
-    /**
-     * @notice Get proposal count for an address
-     */
+    
     function getProposalCount(address proposer) external view returns (uint256) {
         return _proposalCount[proposer];
     }

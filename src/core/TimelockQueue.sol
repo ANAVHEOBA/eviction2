@@ -54,9 +54,7 @@ contract TimelockQueue is ITimelockQueue, AccessControl {
         _grantRole(EXECUTOR_ROLE, msg.sender);
     }
     
-    /**
-     * @notice Check if an address is a contract
-     */
+  
     function _isContract(address account) internal view returns (bool) {
         uint256 size;
         assembly {
